@@ -20,7 +20,7 @@ def _variable_on_cpu(name, shape, initializer):
       Variable Tensor
     """
     with tf.device('/cpu:0'):
-        var = tf.get_variable(name, shape, initializer=initializer)
+        var = tf.compat.v1.get_variable(name, shape, initializer=initializer)
     return var
 
 def _variable_with_weight_decay(name, shape, wd):
@@ -36,49 +36,49 @@ def _variable_with_weight_decay(name, shape, wd):
       Variable Tensor
     """
     var = _variable_on_cpu(name, shape,
-                           initializer=tf.contrib.layers.xavier_initializer())
+                           initializer=tf.compat.v1.keras.initializers.VarianceScaling(scale=1.0, mode="fan_avg", distribution="uniform"))
     if wd:
         weight_decay = tf.mul(tf.nn.l2_loss(var), wd, name='weight_loss')
-        tf.add_to_collection('losses', weight_decay)
+        tf.compat.v1.add_to_collection('losses', weight_decay)
     return var
 
 def _conv(name, in_, ksize, strides=[1,1,1,1], padding=DEFAULT_PADDING, reuse=False):
     
     n_kern = ksize[3]
 
-    with tf.variable_scope(name, reuse=reuse) as scope:
+    with tf.compat.v1.variable_scope(name, reuse=reuse) as scope:
         kernel = _variable_with_weight_decay('weights', shape=ksize, wd=WEIGHT_DECAY_FACTOR)
-        conv = tf.nn.conv2d(in_, kernel, strides, padding=padding)
-        biases = _variable_on_cpu('biases', [n_kern], tf.constant_initializer(0.0))
+        conv = tf.nn.conv2d(in_, filters=kernel, strides=strides, padding=padding)
+        biases = _variable_on_cpu('biases', [n_kern], tf.compat.v1.constant_initializer(0.0))
         bias = tf.nn.bias_add(conv, biases)
         conv = tf.nn.relu(bias, name=scope.name)
         _activation_summary(conv)
 
-    print name, conv.get_shape().as_list()
+    print(name, conv.get_shape().as_list())
     return conv
 
 def _maxpool(name, in_, ksize, strides, padding=DEFAULT_PADDING):
-    pool = tf.nn.max_pool(in_, ksize=ksize, strides=strides,
+    pool = tf.nn.max_pool2d(input=in_, ksize=ksize, strides=strides,
                           padding=padding, name=name)
 
-    print name, pool.get_shape().as_list()
+    print(name, pool.get_shape().as_list())
     return pool
 
 def _fc(name, in_, outsize, dropout=1.0, reuse=False):
-    with tf.variable_scope(name, reuse=reuse) as scope:
+    with tf.compat.v1.variable_scope(name, reuse=reuse) as scope:
         # Move everything into depth so we can perform a single matrix multiply.
         
         insize = in_.get_shape().as_list()[-1]
         weights = _variable_with_weight_decay('weights', shape=[insize, outsize], wd=0.004)
-        biases = _variable_on_cpu('biases', [outsize], tf.constant_initializer(0.0))
+        biases = _variable_on_cpu('biases', [outsize], tf.compat.v1.constant_initializer(0.0))
         fc = tf.nn.relu(tf.matmul(in_, weights) + biases, name=scope.name)
-        fc = tf.nn.dropout(fc, dropout)
+        fc = tf.nn.dropout(fc, rate=1 - (dropout))
 
         _activation_summary(fc)
 
     
 
-    print name, fc.get_shape().as_list()
+    print(name, fc.get_shape().as_list())
     return fc
 
 def inference(img, keep_prob, feature, reuse=True):
@@ -118,7 +118,7 @@ def inference_crossview_not_share(views, keep_prob, feature, origin_reuse=True):
  
     views_pool = []
     reuse = origin_reuse
-    for i in xrange(len(views)): 
+    for i in range(len(views)): 
         if not origin_reuse:
             reuse = (i != 0)
         if i == 0: #search
@@ -192,7 +192,7 @@ def inference_crossview_pool5(views, keep_prob, feature, origin_reuse=True):
  
     views_pool = []
     reuse = origin_reuse
-    for i in xrange(len(views)): 
+    for i in range(len(views)): 
         if not origin_reuse:
             reuse = (i != 0)
         conv1 = _conv('conv1', views[i], [11, 11, 3, 96], [1, 4, 4, 1], 'VALID', reuse=reuse)
@@ -238,7 +238,7 @@ def inference_crossview_fc6_max(views, keep_prob, feature, origin_reuse=True):
  
     views_pool = []
     reuse = origin_reuse
-    for i in xrange(len(views)): 
+    for i in range(len(views)): 
         if not origin_reuse:
             reuse = (i != 0)
         conv1 = _conv('conv1', views[i], [11, 11, 3, 96], [1, 4, 4, 1], 'VALID', reuse=reuse)
@@ -284,7 +284,7 @@ def inference_crossview_fc6_max(views, keep_prob, feature, origin_reuse=True):
 def inference_crossview(views, keep_prob, feature, origin_reuse=True):
  
     views_pool = []
-    for i in xrange(len(views)): 
+    for i in range(len(views)): 
         if not origin_reuse:
             reuse = (i != 0)
         conv1 = _conv('conv1', views[i], [11, 11, 3, 96], [1, 4, 4, 1], 'VALID', reuse=reuse)
@@ -309,7 +309,7 @@ def inference_crossview(views, keep_prob, feature, origin_reuse=True):
 
     two_pool5 = cv_mean(views_pool, 'cv_mean')
     views_pool = []
-    for i in xrange(len(two_pool5)): 
+    for i in range(len(two_pool5)): 
         if not origin_reuse:
             reuse = (i != 0)
         fc6 = _fc('fc6', two_pool5[i][0], 4096, dropout=keep_prob, reuse = reuse)
@@ -332,7 +332,7 @@ def inference_crossview(views, keep_prob, feature, origin_reuse=True):
 def inference_crossview_3cvmean(views, keep_prob, feature, origin_reuse=True):
  
     views_pool = []
-    for i in xrange(len(views)): 
+    for i in range(len(views)): 
         if not origin_reuse:
             reuse = (i != 0)
         conv1 = _conv('conv1', views[i], [11, 11, 3, 96], [1, 4, 4, 1], 'VALID', reuse=reuse)
@@ -357,7 +357,7 @@ def inference_crossview_3cvmean(views, keep_prob, feature, origin_reuse=True):
 
     two_pool5 = cv_mean_3(views_pool, 'cv_mean')
     views_pool = []
-    for i in xrange(len(two_pool5)): 
+    for i in range(len(two_pool5)): 
         if not origin_reuse:
             reuse = (i != 0)
         fc6 = _fc('fc6', two_pool5[i][0], 4096, dropout=keep_prob, reuse = reuse)
@@ -384,15 +384,15 @@ def _view_pool(view_features, name):
         v = tf.expand_dims(v, 0)
         vp = tf.concat(0, [vp, v]) #old version
 
-    print 'vp before reducing:', vp.get_shape().as_list()
+    print('vp before reducing:', vp.get_shape().as_list())
     vp = tf.reduce_max(vp, [0], name=name)
-    print 'vp after reducing:', vp.get_shape().as_list()
+    print('vp after reducing:', vp.get_shape().as_list())
     return vp
 
 def cv_mean_3(view_features, name):
     vp = tf.expand_dims(view_features[0], 0) # eg. [100] -> [1, 100]
 
-    print(vp.get_shape().as_list)
+    print((vp.get_shape().as_list))
     half = vp.get_shape().as_list()[2]/2
     zeros = tf.zeros_like(vp)
 
@@ -424,7 +424,7 @@ def cv_mean_3(view_features, name):
 def cv_mean(view_features, name):
     vp = tf.expand_dims(view_features[0], 0) # eg. [100] -> [1, 100]
 
-    print(vp.get_shape().as_list)
+    print((vp.get_shape().as_list))
     half = vp.get_shape().as_list()[2]/2
     zeros = tf.zeros_like(vp)
 
@@ -456,7 +456,7 @@ def cv_mean(view_features, name):
 def not_padding_zero_cv_mean(view_features, name):
     vp = tf.expand_dims(view_features[0], 0) # eg. [100] -> [1, 100]
 
-    print(vp.get_shape().as_list)
+    print((vp.get_shape().as_list))
     half = vp.get_shape().as_list()[2]/2
     zeros = tf.zeros_like(vp)
 
@@ -490,7 +490,7 @@ def _ggview_pool(view_features, name):
 
     vp = tf.expand_dims(view_features[0], 0) # eg. [100] -> [1, 100]
 
-    print(vp.get_shape().as_list)
+    print((vp.get_shape().as_list))
     half = vp.get_shape().as_list()[2]/2
     zeros = tf.zeros_like(vp)
 
@@ -517,9 +517,9 @@ def _ggview_pool(view_features, name):
 
     vp = tf.concat(0, [vp_up, vp_down])
 
-    print 'vp before reducing:', vp.get_shape().as_list()
+    print('vp before reducing:', vp.get_shape().as_list())
     vp = tf.reduce_max(vp, [0], name=name)
-    print 'vp after reducing:', vp.get_shape().as_list()
+    print('vp after reducing:', vp.get_shape().as_list())
     return vp
 
 def eval_loss(pair1, pair2):    
@@ -547,10 +547,10 @@ def load_alexnet(sess, caffetf_modelpath, layer_name=''):
         if group != 1:
             w = np.concatenate((w, w), axis=2) 
 
-        with tf.variable_scope(name, reuse=True):
+        with tf.compat.v1.variable_scope(name, reuse=True):
             for subkey, data in zip(('weights', 'biases'), (w, b)):
-                print 'loading ', name, subkey
-                var = tf.get_variable(subkey)
+                print('loading ', name, subkey)
+                var = tf.compat.v1.get_variable(subkey)
                 sess.run(var.assign(data))
 
     caffemodel = np.load(caffetf_modelpath)
@@ -565,7 +565,7 @@ def load_alexnet(sess, caffetf_modelpath, layer_name=''):
             try:
                 load(name, data_dict[l])
             except:
-                print('not load {}'.format(l))
+                print(('not load {}'.format(l)))
 
 def load_alexnet_place(sess, caffetf_modelpath, layer_name=''):
     """ caffemodel: np.array, """
@@ -576,10 +576,10 @@ def load_alexnet_place(sess, caffetf_modelpath, layer_name=''):
         if group != 1:
             w = np.concatenate((w, w), axis=2) 
 
-        with tf.variable_scope(name, reuse=True):
+        with tf.compat.v1.variable_scope(name, reuse=True):
             for subkey, data in zip(('weights', 'biases'), (w, b)):
-                print 'loading ', name, subkey
-                var = tf.get_variable(subkey)
+                print('loading ', name, subkey)
+                var = tf.compat.v1.get_variable(subkey)
                 sess.run(var.assign(data))
 
     caffemodel = np.load(caffetf_modelpath)
@@ -594,13 +594,13 @@ def load_alexnet_place(sess, caffetf_modelpath, layer_name=''):
             try:
                 load(name, data_dict[l])
             except:
-                print('not load {}'.format(l))
+                print(('not load {}'.format(l)))
 
 def train(total_loss, global_step, data_size):
     num_batches_per_epoch = data_size / FLAGS.batch_size
     decay_steps = int(num_batches_per_epoch * NUM_EPOCHS_PER_DECAY)
 
-    lr = tf.train.exponential_decay(FLAGS.learning_rate,
+    lr = tf.compat.v1.train.exponential_decay(FLAGS.learning_rate,
                                     global_step,
                                     decay_steps,
                                     LEARNING_RATE_DECAY_FACTOR,
@@ -610,7 +610,7 @@ def train(total_loss, global_step, data_size):
     loss_averages_op = _add_loss_summaries(total_loss)
 
     with tf.control_dependencies([loss_averages_op]):
-        opt = tf.train.AdamOptimizer(lr)
+        opt = tf.compat.v1.train.AdamOptimizer(lr)
         grads = opt.compute_gradients(total_loss)
 
     
@@ -618,7 +618,7 @@ def train(total_loss, global_step, data_size):
     apply_gradient_op = opt.apply_gradients(grads, global_step=global_step)
 
     
-    for var in tf.trainable_variables():
+    for var in tf.compat.v1.trainable_variables():
         tf.histogram_summary(var.op.name, var)
 
     for grad,var in grads:
@@ -628,7 +628,7 @@ def train(total_loss, global_step, data_size):
     variable_averages = tf.train.ExponentialMovingAverage(
             MOVING_AVERAGE_DECAY, global_step)
 
-    variable_averages_op = variable_averages.apply(tf.trainable_variables())
+    variable_averages_op = variable_averages.apply(tf.compat.v1.trainable_variables())
 
     with tf.control_dependencies([apply_gradient_op, variable_averages_op]):
         train_op = tf.no_op(name='train')
@@ -653,5 +653,5 @@ def _activation_summary(x):
 def feature_normalize(feature_list):
     feature_norm = []
     for feature in feature_list:
-        feature_norm.append(tf.nn.l2_normalize(feature, dim=1, name='normalized'))
+        feature_norm.append(tf.nn.l2_normalize(feature, axis=1, name='normalized'))
     return feature_norm
